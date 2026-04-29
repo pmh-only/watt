@@ -10,14 +10,12 @@ import android.widget.EditText
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity() {
     private lateinit var currentBatteryText: TextView
     private lateinit var webhookInput: EditText
     private lateinit var statusText: TextView
 
-    private val networkExecutor = Executors.newSingleThreadExecutor()
     private var batteryReceiverRegistered = false
 
     private val batteryReceiver = object : BroadcastReceiver() {
@@ -37,14 +35,10 @@ class MainActivity : AppCompatActivity() {
         webhookInput.setText(BatteryReporter.readWebhookUrl(this))
 
         findViewById<Button>(R.id.saveWebhookButton).setOnClickListener {
-            saveWebhookConfiguration(showSavedStatus = true)
+            saveWebhookConfiguration()
         }
 
-        findViewById<Button>(R.id.sendNowButton).setOnClickListener {
-            sendCurrentBatteryLevel()
-        }
-
-        ensureBackgroundReportingMatchesSettings()
+        ensureEventReportingMatchesSettings()
         renderBatterySnapshot(BatteryReporter.readBatterySnapshot(this))
     }
 
@@ -70,71 +64,25 @@ class MainActivity : AppCompatActivity() {
         super.onStop()
     }
 
-    override fun onDestroy() {
-        networkExecutor.shutdown()
-        super.onDestroy()
-    }
-
-    private fun ensureBackgroundReportingMatchesSettings() {
+    private fun ensureEventReportingMatchesSettings() {
         if (BatteryReporter.readWebhookUrl(this).isBlank()) {
             statusText.text = getString(R.string.status_idle)
             return
         }
 
-        BatteryWebhookWorker.schedule(this)
-        statusText.text = getString(R.string.background_enabled_status)
+        BatteryEventService.sync(this)
+        statusText.text = getString(R.string.event_enabled_status)
     }
 
-    private fun saveWebhookConfiguration(showSavedStatus: Boolean): String {
+    private fun saveWebhookConfiguration() {
         val webhookUrl = webhookInput.text.toString().trim()
         BatteryReporter.saveWebhookUrl(this, webhookUrl)
+        BatteryEventService.sync(this)
 
-        if (webhookUrl.isBlank()) {
-            BatteryWebhookWorker.cancel(this)
-            statusText.text = getString(R.string.webhook_disabled_status)
-            return webhookUrl
-        }
-
-        BatteryWebhookWorker.schedule(this)
-        if (showSavedStatus) {
-            statusText.text = getString(R.string.webhook_saved_status)
-        }
-
-        return webhookUrl
-    }
-
-    private fun sendCurrentBatteryLevel() {
-        val webhookUrl = saveWebhookConfiguration(showSavedStatus = false)
-        if (webhookUrl.isBlank()) {
-            statusText.text = getString(R.string.missing_webhook_status)
-            return
-        }
-
-        val snapshot = BatteryReporter.readBatterySnapshot(this)
-        if (snapshot == null) {
-            statusText.text = getString(R.string.battery_unavailable_status)
-            return
-        }
-
-        statusText.text = getString(R.string.sending_status, snapshot.percent)
-        networkExecutor.execute {
-            try {
-                val responseCode = BatteryReporter.postBatterySnapshot(webhookUrl, snapshot, "manual")
-                runOnUiThread {
-                    statusText.text = if (responseCode in 200..299) {
-                        getString(R.string.send_success_status, responseCode)
-                    } else {
-                        getString(R.string.send_failed_status, responseCode)
-                    }
-                }
-            } catch (exception: Exception) {
-                runOnUiThread {
-                    statusText.text = getString(
-                        R.string.send_error_status,
-                        exception.message ?: getString(R.string.unknown_error),
-                    )
-                }
-            }
+        statusText.text = if (webhookUrl.isBlank()) {
+            getString(R.string.event_disabled_status)
+        } else {
+            getString(R.string.webhook_saved_status)
         }
     }
 
@@ -147,7 +95,7 @@ class MainActivity : AppCompatActivity() {
         currentBatteryText.text = getString(
             R.string.current_battery_format,
             snapshot.percent,
-            snapshot.status,
+            snapshot.status.replace('_', ' '),
         )
     }
 }

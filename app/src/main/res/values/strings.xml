@@ -1,23 +1,18 @@
 <resources>
     <string name="app_name">Watt</string>
     <string name="screen_title">Discord Battery Webhook</string>
-    <string name="screen_subtitle">Save a Discord webhook URL and the app will report the phone battery level every 15 minutes while also letting you send an immediate update as an embed.</string>
+    <string name="screen_subtitle">Save a Discord webhook URL and the app will send embeds when the charger connects or disconnects, when the battery becomes low, and when the phone restarts.</string>
     <string name="webhook_label">Discord Webhook URL</string>
     <string name="webhook_hint">https://discord.com/api/webhooks/...</string>
-    <string name="background_note">Background reporting uses Android WorkManager, so the OS may shift exact timing slightly.</string>
+    <string name="event_note">Event monitoring runs in a foreground service so Android can keep watching charger and battery state changes.</string>
     <string name="save_webhook_button">Save Webhook</string>
-    <string name="send_now_button">Send Now</string>
-    <string name="status_idle">Enter a webhook URL to start sending battery updates.</string>
-    <string name="background_enabled_status">Background battery reporting is enabled.</string>
-    <string name="webhook_saved_status">Webhook saved. Periodic battery reporting is enabled.</string>
-    <string name="webhook_disabled_status">Webhook removed. Background reporting is disabled.</string>
-    <string name="missing_webhook_status">Add a webhook URL before sending battery data.</string>
-    <string name="battery_unavailable_status">Battery information is not available right now.</string>
-    <string name="sending_status">Sending %1$d%% battery level...</string>
-    <string name="send_success_status">Battery update sent successfully. HTTP %1$d.</string>
-    <string name="send_failed_status">Webhook returned HTTP %1$d.</string>
-    <string name="send_error_status">Could not send battery update: %1$s</string>
-    <string name="unknown_error">Unknown error</string>
+    <string name="status_idle">Enter a webhook URL to start event-based battery notifications.</string>
+    <string name="event_enabled_status">Event-based webhook monitoring is enabled.</string>
+    <string name="webhook_saved_status">Webhook saved. Event-based battery notifications are enabled.</string>
+    <string name="event_disabled_status">Webhook removed. Event-based monitoring is disabled.</string>
     <string name="current_battery_unavailable">Current battery: unavailable</string>
     <string name="current_battery_format">Current battery: %1$d%% (%2$s)</string>
+    <string name="monitoring_notification_channel_name">Battery Event Monitoring</string>
+    <string name="monitoring_notification_title">Battery event monitoring enabled</string>
+    <string name="monitoring_notification_text">Watching charger and battery events for Discord webhook updates.</string>
 </resources>

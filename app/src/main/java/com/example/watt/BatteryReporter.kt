@@ -1,15 +1,16 @@
 package com.example.watt
 
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.BatteryManager
-import android.os.Build
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.time.Instant
+import java.util.concurrent.Executors
 
 data class BatterySnapshot(
     val percent: Int,
@@ -17,10 +18,29 @@ data class BatterySnapshot(
     val status: String,
 )
 
+enum class BatteryEventType {
+    CHARGER_CONNECTED,
+    CHARGER_DISCONNECTED,
+    BATTERY_LOW,
+    BATTERY_EXTREMELY_LOW,
+    PHONE_RESTARTED,
+}
+
+private enum class BatteryAlertState {
+    NONE,
+    LOW,
+    EXTREME,
+}
+
 object BatteryReporter {
     const val prefsName = "watt_prefs"
     const val webhookUrlKey = "webhook_url"
-    const val periodicWorkName = "battery-webhook"
+
+    private const val batteryAlertStateKey = "battery_alert_state"
+    private const val lowBatteryThreshold = 15
+    private const val extremeLowBatteryThreshold = 5
+
+    private val webhookExecutor = Executors.newSingleThreadExecutor()
 
     fun readWebhookUrl(context: Context): String {
         return context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
@@ -58,25 +78,74 @@ object BatteryReporter {
         )
     }
 
-    fun postBatterySnapshot(webhookUrl: String, snapshot: BatterySnapshot, source: String): Int {
-        val fields = JSONArray()
-            .put(discordField("Battery", "${snapshot.percent}%", true))
-            .put(discordField("Status", snapshot.status.replace('_', ' '), true))
-            .put(discordField("Charging", yesNo(snapshot.isCharging), true))
-            .put(discordField("Source", source, true))
-            .put(discordField("Device", "${Build.MANUFACTURER} ${Build.MODEL}", false))
+    fun initializeBatteryAlertState(context: Context, snapshot: BatterySnapshot) {
+        saveBatteryAlertState(context, alertStateFor(snapshot))
+    }
 
+    fun resetBatteryAlertState(context: Context) {
+        saveBatteryAlertState(context, BatteryAlertState.NONE)
+    }
+
+    fun handleBatteryLevelChange(context: Context, snapshot: BatterySnapshot) {
+        if (snapshot.isCharging) {
+            if (snapshot.percent > lowBatteryThreshold) {
+                saveBatteryAlertState(context, BatteryAlertState.NONE)
+            }
+            return
+        }
+
+        val currentAlertState = alertStateFor(snapshot)
+        val previousAlertState = readBatteryAlertState(context)
+
+        when {
+            currentAlertState == BatteryAlertState.EXTREME && previousAlertState != BatteryAlertState.EXTREME -> {
+                saveBatteryAlertState(context, BatteryAlertState.EXTREME)
+                sendBatteryEventAsync(context, BatteryEventType.BATTERY_EXTREMELY_LOW, snapshot)
+            }
+
+            currentAlertState == BatteryAlertState.LOW && previousAlertState == BatteryAlertState.NONE -> {
+                saveBatteryAlertState(context, BatteryAlertState.LOW)
+                sendBatteryEventAsync(context, BatteryEventType.BATTERY_LOW, snapshot)
+            }
+
+            currentAlertState == BatteryAlertState.NONE && previousAlertState != BatteryAlertState.NONE -> {
+                saveBatteryAlertState(context, BatteryAlertState.NONE)
+            }
+        }
+    }
+
+    fun sendBatteryEventAsync(
+        context: Context,
+        eventType: BatteryEventType,
+        snapshot: BatterySnapshot,
+        pendingResult: BroadcastReceiver.PendingResult? = null,
+    ) {
+        val appContext = context.applicationContext
+        webhookExecutor.execute {
+            try {
+                val webhookUrl = readWebhookUrl(appContext)
+                if (webhookUrl.isNotBlank()) {
+                    postBatteryEvent(webhookUrl, snapshot, eventType)
+                }
+            } finally {
+                pendingResult?.finish()
+            }
+        }
+    }
+
+    private fun postBatteryEvent(
+        webhookUrl: String,
+        snapshot: BatterySnapshot,
+        eventType: BatteryEventType,
+    ): Int {
         val embeds = JSONArray().put(
             JSONObject()
-                .put("title", "Battery Update")
-                .put("description", batterySummary(snapshot))
-                .put("color", batteryColor(snapshot))
                 .put("timestamp", Instant.now().toString())
-                .put("fields", fields),
+                .put("title", eventTitle(eventType, snapshot.percent))
+                .put("color", eventColor(eventType)),
         )
 
         val payload = JSONObject()
-            .put("username", "Watt")
             .put("embeds", embeds)
             .toString()
 
@@ -107,6 +176,29 @@ object BatteryReporter {
         }
     }
 
+    private fun alertStateFor(snapshot: BatterySnapshot): BatteryAlertState {
+        return when {
+            snapshot.percent <= extremeLowBatteryThreshold -> BatteryAlertState.EXTREME
+            snapshot.percent <= lowBatteryThreshold -> BatteryAlertState.LOW
+            else -> BatteryAlertState.NONE
+        }
+    }
+
+    private fun readBatteryAlertState(context: Context): BatteryAlertState {
+        val rawValue = context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+            .getString(batteryAlertStateKey, BatteryAlertState.NONE.name)
+            .orEmpty()
+
+        return BatteryAlertState.entries.firstOrNull { it.name == rawValue } ?: BatteryAlertState.NONE
+    }
+
+    private fun saveBatteryAlertState(context: Context, state: BatteryAlertState) {
+        context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+            .edit()
+            .putString(batteryAlertStateKey, state.name)
+            .apply()
+    }
+
     private fun batteryStatus(statusCode: Int): String {
         return when (statusCode) {
             BatteryManager.BATTERY_STATUS_CHARGING -> "charging"
@@ -117,31 +209,23 @@ object BatteryReporter {
         }
     }
 
-    private fun batterySummary(snapshot: BatterySnapshot): String {
-        return if (snapshot.isCharging) {
-            "Phone battery is at ${snapshot.percent}% and charging."
-        } else {
-            "Phone battery is at ${snapshot.percent}% and ${snapshot.status.replace('_', ' ')}."
+    private fun eventTitle(eventType: BatteryEventType, percent: Int): String {
+        return when (eventType) {
+            BatteryEventType.CHARGER_CONNECTED -> "⚡  Charger connected (${percent}%)"
+            BatteryEventType.CHARGER_DISCONNECTED -> "🔋   Charger disconnected (${percent}%)"
+            BatteryEventType.BATTERY_LOW -> "🪫 Battery low (${percent}%)"
+            BatteryEventType.BATTERY_EXTREMELY_LOW -> "🪫 Battery extremely low (${percent}%)"
+            BatteryEventType.PHONE_RESTARTED -> "✅ Phone restarted (${percent}%)"
         }
     }
 
-    private fun batteryColor(snapshot: BatterySnapshot): Int {
-        return when {
-            snapshot.isCharging -> 0x57F287
-            snapshot.percent >= 50 -> 0x5865F2
-            snapshot.percent >= 20 -> 0xFEE75C
-            else -> 0xED4245
+    private fun eventColor(eventType: BatteryEventType): Int {
+        return when (eventType) {
+            BatteryEventType.CHARGER_CONNECTED -> 16773929
+            BatteryEventType.CHARGER_DISCONNECTED -> 2752332
+            BatteryEventType.BATTERY_LOW -> 15760896
+            BatteryEventType.BATTERY_EXTREMELY_LOW -> 15728640
+            BatteryEventType.PHONE_RESTARTED -> 18928
         }
-    }
-
-    private fun discordField(name: String, value: String, inline: Boolean): JSONObject {
-        return JSONObject()
-            .put("name", name)
-            .put("value", value)
-            .put("inline", inline)
-    }
-
-    private fun yesNo(value: Boolean): String {
-        return if (value) "Yes" else "No"
     }
 }
