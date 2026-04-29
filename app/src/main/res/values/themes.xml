@@ -1,0 +1,3 @@
+<resources>
+    <style name="Theme.Watt" parent="Theme.AppCompat.DayNight.NoActionBar" />
+</resources>
