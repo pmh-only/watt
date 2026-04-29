@@ -141,7 +141,7 @@ object BatteryReporter {
         val embeds = JSONArray().put(
             JSONObject()
                 .put("timestamp", Instant.now().toString())
-                .put("title", eventTitle(eventType, snapshot.percent))
+                .put("description", eventTitle(eventType, snapshot.percent))
                 .put("color", eventColor(eventType)),
         )
 
