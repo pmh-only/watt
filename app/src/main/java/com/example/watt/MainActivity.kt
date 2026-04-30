@@ -4,9 +4,14 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.net.Uri
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
+import android.view.View
 import android.widget.Button
 import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -15,6 +20,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var currentBatteryText: TextView
     private lateinit var webhookInput: EditText
     private lateinit var statusText: TextView
+    private lateinit var batteryOptimizationWarning: LinearLayout
 
     private var batteryReceiverRegistered = false
 
@@ -31,6 +37,7 @@ class MainActivity : AppCompatActivity() {
         currentBatteryText = findViewById(R.id.currentBatteryText)
         webhookInput = findViewById(R.id.webhookInput)
         statusText = findViewById(R.id.statusText)
+        batteryOptimizationWarning = findViewById(R.id.batteryOptimizationWarning)
 
         webhookInput.setText(BatteryReporter.readWebhookUrl(this))
 
@@ -38,8 +45,17 @@ class MainActivity : AppCompatActivity() {
             saveWebhookConfiguration()
         }
 
+        findViewById<Button>(R.id.disableBatteryOptimizationButton).setOnClickListener {
+            requestBatteryOptimizationExemption()
+        }
+
         ensureEventReportingMatchesSettings()
         renderBatterySnapshot(BatteryReporter.readBatterySnapshot(this))
+    }
+
+    override fun onResume() {
+        super.onResume()
+        updateBatteryOptimizationWarning()
     }
 
     override fun onStart() {
@@ -84,6 +100,19 @@ class MainActivity : AppCompatActivity() {
         } else {
             getString(R.string.webhook_saved_status)
         }
+    }
+
+    private fun updateBatteryOptimizationWarning() {
+        val pm = getSystemService(PowerManager::class.java)
+        val isIgnoring = pm.isIgnoringBatteryOptimizations(packageName)
+        batteryOptimizationWarning.visibility = if (isIgnoring) View.GONE else View.VISIBLE
+    }
+
+    private fun requestBatteryOptimizationExemption() {
+        val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+            data = Uri.parse("package:$packageName")
+        }
+        startActivity(intent)
     }
 
     private fun renderBatterySnapshot(snapshot: BatterySnapshot?) {

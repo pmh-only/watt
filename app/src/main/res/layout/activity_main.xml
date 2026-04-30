@@ -54,6 +54,30 @@
             android:layout_marginTop="12dp"
             android:text="@string/event_note" />
 
+        <LinearLayout
+            android:id="@+id/batteryOptimizationWarning"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:background="#FFF3CD"
+            android:orientation="vertical"
+            android:padding="12dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/battery_optimization_warning"
+                android:textColor="#856404" />
+
+            <Button
+                android:id="@+id/disableBatteryOptimizationButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/disable_battery_optimization_button" />
+        </LinearLayout>
+
         <Button
             android:id="@+id/saveWebhookButton"
             android:layout_width="match_parent"

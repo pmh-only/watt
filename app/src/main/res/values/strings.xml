@@ -12,6 +12,8 @@
     <string name="event_disabled_status">Webhook removed. Event-based monitoring is disabled.</string>
     <string name="current_battery_unavailable">Current battery: unavailable</string>
     <string name="current_battery_format">Current battery: %1$d%% (%2$s)</string>
+    <string name="battery_optimization_warning">Battery optimization is enabled for this app. Android may stop the background service unexpectedly. Tap below to exempt this app and keep it running reliably.</string>
+    <string name="disable_battery_optimization_button">Disable Battery Optimization</string>
     <string name="monitoring_notification_channel_name">Battery Event Monitoring</string>
     <string name="monitoring_notification_title">Battery event monitoring enabled</string>
     <string name="monitoring_notification_text">Watching charger and battery events for Discord webhook updates.</string>
