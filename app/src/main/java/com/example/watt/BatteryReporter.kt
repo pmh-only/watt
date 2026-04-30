@@ -147,6 +147,7 @@ object BatteryReporter {
 
         val payload = JSONObject()
             .put("embeds", embeds)
+            .put("flags", 4096)
             .toString()
 
         val connection = (URL(webhookUrl).openConnection() as HttpURLConnection).apply {
